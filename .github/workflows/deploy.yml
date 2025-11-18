@@ -1,4 +1,4 @@
-# .github/workflows/deploy.yml (Host key verification failed 해결)
+# .github/workflows/deploy.yml (Permission Denied 해결)
 name: Deploy to NCP (WAR)
 on:
   push:
@@ -31,8 +31,7 @@ jobs:
           echo "${{ secrets.BASTION_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.BASTION_HOST }} >> ~/.ssh/known_hosts
-        # [수정] 이 스텝은 루트에서 실행되어야 합니다.
-        working-directory: .
+        working-directory: . # 루트에서 실행
 
       # 4. Maven 빌드
       - name: Make mvnw executable
@@ -44,18 +43,25 @@ jobs:
       - name: List WARs built (debug)
         run: ls -lh target/
 
-      # 5. WAR 파일 bastion → private 서버로 전송 (ProxyJump 사용)
-      - name: Deploy WAR to private server
+      # 5. [수정] WAR 파일 Bastion 서버로 1차 전송
+      - name: Copy WAR to bastion server
         run: |
-          echo "Copy WAR file to private server..."
-          # [수정] Host key 검사 스킵 옵션 추가
-          scp -o StrictHostKeyChecking=no \
-              -o ProxyJump=${{ secrets.BASTION_USER }}@${{ secrets.BASTION_HOST }} \
-              target/SpringBoot1-0.0.1-SNAPSHOT.war \
-              root@10.1.2.6:/root/app.war
+          scp target/SpringBoot1-0.0.1-SNAPSHOT.war ${{ secrets.BASTION_USER }}@${{ secrets.BASTION_HOST }}:/tmp/app.war
 
-          echo "Run deploy.sh on private server..."
-          # [수정] Host key 검사 스킵 옵션 추가
-          ssh -o StrictHostKeyChecking=no \
-              -o ProxyJump=${{ secrets.BASTION_USER }}@${{ secrets.BASTION_HOST }} \
-              root@10.1.2.6 'bash /root/deploy.sh'
+      # 6. [수정] Bastion 서버에서 Private 서버로 2차 전송 및 배포
+      - name: SSH into bastion and deploy to private server
+        run: |
+          set -x
+          echo "SSH into bastion host and run commands..."
+          ssh ${{ secrets.BASTION_USER }}@${{ secrets.BASTION_HOST }} << 'EOF'
+            echo "Copying app.war from bastion to private server..."
+            
+            # [핵심] Host key 검사 스킵 옵션 추가
+            scp -o StrictHostKeyChecking=no /tmp/app.war root@10.1.2.6:/root/app.war
+            
+            echo "Running deploy.sh on private server..."
+            
+            # [핵심] Host key 검사 스킵 옵션 추가
+            ssh -o StrictHostKeyChecking=no root@10.1.2.6 'bash /root/deploy.sh'
+          EOF
+        working-directory: . # 루트에서 실행
