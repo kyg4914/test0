@@ -1,4 +1,4 @@
-# .github/workflows/deploy.yml (WAR 배포용, 302→404 문제 해결)
+# .github/workflows/deploy.yml (Host key verification failed 해결)
 name: Deploy to NCP (WAR)
 on:
   push:
@@ -31,6 +31,8 @@ jobs:
           echo "${{ secrets.BASTION_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.BASTION_HOST }} >> ~/.ssh/known_hosts
+        # [수정] 이 스텝은 루트에서 실행되어야 합니다.
+        working-directory: .
 
       # 4. Maven 빌드
       - name: Make mvnw executable
@@ -46,10 +48,14 @@ jobs:
       - name: Deploy WAR to private server
         run: |
           echo "Copy WAR file to private server..."
-          scp -o ProxyJump=${{ secrets.BASTION_USER }}@${{ secrets.BASTION_HOST }} \
+          # [수정] Host key 검사 스킵 옵션 추가
+          scp -o StrictHostKeyChecking=no \
+              -o ProxyJump=${{ secrets.BASTION_USER }}@${{ secrets.BASTION_HOST }} \
               target/SpringBoot1-0.0.1-SNAPSHOT.war \
               root@10.1.2.6:/root/app.war
 
           echo "Run deploy.sh on private server..."
-          ssh -o ProxyJump=${{ secrets.BASTION_USER }}@${{ secrets.BASTION_HOST }} \
+          # [수정] Host key 검사 스킵 옵션 추가
+          ssh -o StrictHostKeyChecking=no \
+              -o ProxyJump=${{ secrets.BASTION_USER }}@${{ secrets.BASTION_HOST }} \
               root@10.1.2.6 'bash /root/deploy.sh'
