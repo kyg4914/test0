@@ -18,7 +18,7 @@ import jakarta.servlet.http.HttpSession;
 
 @Controller
 public class MyController {
-	// 수정
+	// 수정1
 	// DB를 연결해서 데이터를 조회, 생성하는 기능을 처리하는 컨트롤러
 	
 	// 데이터 확인하는 용도로 console 출력할 도구
