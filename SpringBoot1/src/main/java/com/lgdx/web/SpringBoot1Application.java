@@ -2,17 +2,22 @@ package com.lgdx.web;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-
-// @SpringBootApplication : 해당 클래스의 위치를 기준으로, 하위에 있는 파일을 읽어
-// Spring Boot의 설정을 자동적으로 진행하는 클래스!
-
-// @ComponentScan : @Controller, @RestController, @Services, @Repository
+// 1. 두 줄 임포트
+import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.web.servlet.support.SpringBootServletInitializer;
 
 @SpringBootApplication
-public class SpringBoot1Application {
+// 2. 'extends SpringBootServletInitializer' 추가
+public class SpringBoot1Application extends SpringBootServletInitializer {
 
-	public static void main(String[] args) {
-		SpringApplication.run(SpringBoot1Application.class, args);
-	}
+    // 3. 이 'configure' 메서드를 클래스 안에 추가
+    @Override
+    protected SpringApplicationBuilder configure(SpringApplicationBuilder application) {
+        return application.sources(SpringBoot1Application.class);
+    }
 
+    // (기존 main 메서드는 그대로 둡니다)
+    public static void main(String[] args) {
+        SpringApplication.run(SpringBoot1Application.class, args);
+    }
 }
