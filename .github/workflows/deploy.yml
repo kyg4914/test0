@@ -1,20 +1,27 @@
-# .github/workflows/deploy.yml (수정 완료된 버전)
-name: Deploy to NCP
+# .github/workflows/deploy.yml (WAR 배포 버전)
+name: Deploy to NCP (WAR)
 on:
   push:
     branches: [ "master" ]
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    
+    defaults:
+      run:
+        working-directory: ./SpringBoot1
+
     steps:
       - name: Checkout source code
         uses: actions/checkout@v3
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
-      - name: Setup SSH key
+
+      - name: Setup SSH key for Bastion
         run: |
           set -x
           mkdir -p ~/.ssh
@@ -22,36 +29,40 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.BASTION_HOST }} >> ~/.ssh/known_hosts || echo "ssh-keyscan failed"
           ssh -o StrictHostKeyChecking=no ${{ secrets.BASTION_USER }}@${{ secrets.BASTION_HOST }} "echo SSH connection success" || echo "SSH connection failed"
+        working-directory: .
 
-      # --- SpringBoot1 폴더 안에서 실행 ---
+      # --- Build Steps (SpringBoot1에서 실행) ---
       - name: Make mvnw executable
         run: chmod +x ./mvnw
-        working-directory: ./SpringBoot1
-      - name: Build Spring Boot app with Maven
-        run: |
-          set -x
-          ./mvnw clean package
-        working-directory: ./SpringBoot1
-      - name: List JARs built (debug)
+
+      - name: Build Spring Boot app with Maven (WAR)
+        # pom.xml이 war로 변경되었으므로 'package' 실행 시 .war 파일 생성
+        run: ./mvnw clean package
+
+      - name: List WARs built (debug)
         run: |
           set -x
           ls -lh target/
-        working-directory: ./SpringBoot1
-      - name: Copy JAR to bastion server
+        
+      # --- Deploy Steps ---
+      - name: Copy WAR to bastion server
+        # [수정] .jar 대신 .war 파일을 app.war 이름으로 복사
         run: |
           set -x
-          echo "Copying JAR to bastion server..."
-          scp target/*SNAPSHOT.jar ${{ secrets.BASTION_USER }}@${{ secrets.BASTION_HOST }}:/tmp/app.jar
-        working-directory: ./SpringBoot1
-      # --- --------------------------- ---
+          echo "Copying WAR to bastion server..."
+          scp target/SpringBoot1-0.0.1-SNAPSHOT.war ${{ secrets.BASTION_USER }}@${{ secrets.BASTION_HOST }}:/tmp/app.war
 
-      - name: SSH into bastion and move JAR to private server
+      - name: SSH into bastion and deploy to private server
         run: |
           set -x
           echo "SSH into bastion host and run commands..."
           ssh ${{ secrets.BASTION_USER }}@${{ secrets.BASTION_HOST }} << 'EOF'
-            echo "Copying app.jar to private server..."
-            scp /tmp/app.jar root@10.1.2.6:/root/app.jar
+            echo "Copying app.war from bastion to private server..."
+            # [수정] app.war 파일을 복사
+            scp /tmp/app.war root@10.1.2.6:/root/app.war
+            
             echo "Running deploy.sh on private server..."
+            # [중요] /root/deploy.sh는 이제 .war 파일을 처리해야 합니다.
             ssh root@10.1.2.6 'bash /root/deploy.sh'
           EOF
+        working-directory: .
