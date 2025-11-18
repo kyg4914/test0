@@ -1,0 +1,71 @@
+# .github/workflows/deploy.yml
+
+name: Deploy to NCP
+
+on:
+  push:
+    branches: [ "master" ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v3
+
+      # 1. (권장) JDK 17 설정
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      # 2. SSH 키 설정 (기존과 동일)
+      - name: Setup SSH key
+        run: |
+          set -x
+          mkdir -p ~/.ssh
+          echo "${{ secrets.BASTION_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.BASTION_HOST }} >> ~/.ssh/known_hosts || echo "ssh-keyscan failed"
+          ls -al ~/.ssh
+          cat ~/.ssh/known_hosts
+          ssh -o StrictHostKeyChecking=no ${{ secrets.BASTION_USER }}@${{ secrets.BASTION_HOST }} "echo SSH connection success" || echo "SSH connection failed"
+
+      # 3. (수정) Maven Wrapper에 실행 권한 부여 (선택 사항이지만 권장)
+      - name: Make mvnw executable
+        run: chmod +x ./mvnw
+
+      # 4. (수정) Maven으로 Spring Boot 앱 빌드
+      - name: Build Spring Boot app with Maven
+        run: |
+          set -x
+          ./mvnw clean package
+          # ./mvnw clean package -DskipTests # 테스트를 건너뛰고 빌드하려면 주석 해제
+
+      # 5. (수정) 빌드된 JAR 파일 확인 (경로 변경)
+      - name: List JARs built (debug)
+        run: |
+          set -x
+          ls -lh target/
+
+      # 6. (수정) Bastion 서버로 JAR 파일 복사 (경로 변경)
+      - name: Copy JAR to bastion server
+        run: |
+          set -x
+          echo "Copying JAR to bastion server..."
+          # build/libs -> target/ 으로 경로 수정
+          scp target/*SNAPSHOT.jar ${{ secrets.BASTION_USER }}@${{ secrets.BASTION_HOST }}:/tmp/app.jar
+
+      # 7. Bastion을 통해 Private 서버로 배포 (기존과 동일)
+      - name: SSH into bastion and move JAR to private server
+        run: |
+          set -x
+          echo "SSH into bastion host and run commands..."
+          ssh ${{ secrets.BASTION_USER }}@${{ secrets.BASTION_HOST }} << 'EOF'
+            echo "Copying app.jar to private server..."
+            scp /tmp/app.jar root@10.1.2.6:/root/app.jar
+            echo "Running deploy.sh on private server..."
+            ssh root@10.1.2.6 'bash /root/deploy.sh'
+          EOF
